@@ -1,0 +1,64 @@
+WPFツールで実現したいペンイベントの乗っ取り機能と，そのJSON記述内容は概ねつぎのようなものであればと思っています：
+・共通項目
+　・LongPressMs ロングプレス判定しきい値 msec，
+・アプリごと
+	・ボタン名，イベント，方法，機能，値
+
+●ボタン名
+	Barrel	//デフォルト：マウス右ボタンエミュレートされる
+	Eraser	//デフォルト：これを押したままペン先をタッチすると消しゴムペンとして動作（消しゴム未対応アプリには何も起きない）
+	tip		//デフォルトでペン先．マウス左ボタンにエミュレートされる．
+
+●イベント名
+	ShortPress	//短時間で離されたとき．マウスエミュレートでクリック．
+	LongPress	//ショートを超える時間押され続けているとき，マウスエミュレーションでは長押し，ドラッグなど．
+	
+●方法
+	replace		//イベントをもみ消し，代わりに指定された機能を発行する
+	parallel	//イベントはそのままアプリに渡し，指定された機能を発行する
+	defalut		//イベントはそのままアプリに渡し，なにも手を付けない
+●機能
+	ScanCode, values	//スキャンコード(Values)を順に発行する
+	MouseFunc, values	//マウス機能(values)を発行する．
+●値
+	value	{ a }		// １つの値	
+	values{ a, b, c,...}	// 複数の値のリスト
+
+	values{ ... }
+			VM_L_click	// press + release
+			VM_L_press
+			VM_L_release
+			VM_M_click
+			VM_M_press
+			VM_M_release
+			VM_W_UP
+			VM_W_DOWN
+			VM_T_L_click/press/release
+			VM_T_R_click/press/release
+
+
+
+		Barrel, ShortPress, replace, ScanCode, values		// ショートプレス イベントをスキャンコーValueにすり替えて発行．イベントはもみ消す
+												// 疑問：もみ消しできる？　ショートプレス達成時間まではイベントが発生しているわけで，それはアプリに伝わっていてアプリ側でなんらかのトリガが発動しているのでは？
+		Barrel, ShortPress, parallel, ScanCoce, values		// イベントはそのまま流し，スキャンコードValueを割り込み発行．
+
+　　	Barrel, LongPress,	default				// ロングプレス イベントにはてつけない．そのままアプリに渡す．
+，
+ScanCode	dafault	// ColerPicker (Momentaly)
+　　	EraserShortScanCode	0x12	// E	(Alternamte)
+　　	BarrelLongScanCode	dafault	// Eraser (Momentaly)
+
+　・krita
+　　・BarrelShortScanCode	default
+　　・BarrelLongScanCode	dafault	// ColerPicker (Momentaly)
+　　・EraserShortScanCode	0x12	// E	(Alternamte)
+　　・BarrelLongScanCode	dafault	// Eraser (Momentaly)
+　・ClipStudioPaiint
+　・Artrge
+　・Explorer
+　・default	// どのアプリにも該当しなかった場合
+　　・BarrelShortScanCode	default
+　　・BarrelLongScanCode	dafault
+　　・EraserShortScanCode	default
+　　・BarrelLongScanCode	dafault
+
