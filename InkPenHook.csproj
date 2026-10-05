@@ -10,6 +10,11 @@
 	<ApplicationIcon>InkPenHook_Icon_16-256.ico</ApplicationIcon>
 	<Description>for Dynabook V8 StylusPen(WACOM AES2)
 I created this with a lot of help from Google Gemini. Thanks!</Description>
+	<Configurations>Debug;Release</Configurations>
+
+	<!-- ビルド日時をリビジョンIDとして埋め込む -->
+	<SourceRevisionId>$([System.DateTime]::UtcNow.ToString("yyyy-MM-dd HH:mm:ssZ"))</SourceRevisionId>
+
   </PropertyGroup>
 
 	<Target Name="GenerateBuildInfo" BeforeTargets="BeforeCompile;CoreCompile">
@@ -39,12 +44,29 @@ namespace System
 	</Target>
 
 	<ItemGroup>
+	  <None Remove="20260907 構成ファイル案.txt" />
+	  <None Remove="2026_09_06_日.txt" />
+	  <None Remove="2026_09_08_火.txt" />
+	  <None Remove="2026_09_08_火_16_44_17.txt" />
 	  <None Remove="InkPenHook_Icon_16-256.ico" />
 	  <None Remove="InkPenHook_Icon_256.ico" />
 	</ItemGroup>
 
 	<ItemGroup>
-	  <Resource Include="InkPenHook_Icon_16-256.ico" />
+	  <Page Remove="InkPenHook.xaml" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Content Include="InkPenHook.xaml">
+	    <Generator>MSBuild:Compile</Generator>
+	    <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+	  </Content>
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Resource Include="InkPenHook_Icon_16-256.ico">
+	    <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+	  </Resource>
 	</ItemGroup>
 
 	<ItemGroup>

@@ -1,0 +1,74 @@
+﻿<RootConfig xmlns="clr-namespace:InkPenHook;assembly=InkPenHook">
+<!-- 
+	InkPenHooker.xaml
+	WindowsInk ペンボタンカスタイマイズ設定ファイル
+
+	Dynabook W6系付属の名ばかりWACOM AES2.0ペンボタンのカスタマイズ
+	ペン先の直下にあるアプリごとに機能を切り替えることができる
+
+	【全体設定】
+    Long判定時間．これ以上長く押し続けた場合にロングプレスと判定する．これ以下で離せばショートプレス．
+	LongPressMs = 350 msec 遅いかも．現在200msec
+
+	【対象アプリ】
+	AppName : アプリ名称(表記用)
+	ProcessName : 実行ファイル名(*.exe|*.com) ※要確認 QtアプリやVS,VBなど
+	ペンカーソル直下で識別し，機能を切り替える．
+	リストに無い場合はOS規定の動作．
+
+	【押す長さと動作】
+    Short : ちょん押し．オルタネート動作．もう一度押すことで復帰．
+	Long  : 長押し．モーメンタリ動作．離すと復帰．
+
+	【ボタン名】
+    Barrel : ペン胴にあるボタン．OSデフォルトではマウス右ボタンなど
+    Eraser : 筆記ペン先の反対端にある消しゴム用のペン先．
+			 またはBarrelの隣に配置されていることも．
+			 OSデフォルトでは消しゴムなど
+	※筆記用ペン先はOSによってマウス左ボタンに固定割り当てされてる
+
+    【スキャンコード対応表】
+    0x12 (18) = 'E' キー (KRITA/クリスタの消しゴム切り替え)
+    0x17 (23) = 'I' キー (スポイト)
+    0x39 (57) = 'Space' キー (手のひら)
+    0x00 (0)  = 割り当てなし (OS既定のマウス右クリックなどが動作)
+
+	※文字のASCIIではない．キーボードの物理レイアウトに依存
+-->
+
+    <!-- 全体設定 -->
+    <RootConfig.GlobalSettings>
+        <GlobalSettings LongPressMs="200" />
+    </RootConfig.GlobalSettings>
+
+    <!-- 各アプリごとの個別プロファイル設定 -->
+    <RootConfig.Apps>
+    <!-- KRITA
+	消しゴムトグルがBarrelボタンであればShortにEを設定すれば機能している．
+	けど，Eraserボタンに設定すると効かなくなる．
+
+　　スポイトはマウス右クリックに割り当ててあるのでBarrel Long "0"であれば問題なく正常に動作する．
+	 -->
+        <AppProfile AppName="KRITA" 
+            ProcessName="krita" 
+            BarrelShortScanCode="18" 
+            BarrelLongScanCode="0" 
+            EraserShortScanCode="18" 
+            EraserLongScanCode="0" />
+
+	<!-- CliSta 
+	消しゴムとブラシを同じショートカットEに割り当ててある．
+	これでこの2つの間でだけトグルできる．
+	スポイトは色を選択中押し続ける必要があるんでLongに設定する．
+	アイコンがスポイトに変化したのを確認してから画面をタップして，
+	色を選んでから離す.これでスポイト操作が完了する．
+	ロング判定時間が350msでは応答が遅い気がするんで200msに短縮した．
+	 -->
+        <AppProfile AppName="CliSta" 
+            ProcessName="CLIPStudioPaint" 
+            BarrelShortScanCode="0" 
+            BarrelLongScanCode="23" 
+            EraserShortScanCode="18" 
+            EraserLongScanCode="0" />
+    </RootConfig.Apps>
+</RootConfig>
