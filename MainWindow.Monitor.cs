@@ -1,6 +1,6 @@
 // InkPenHook
-// MainWindow.Monitor.cs	2026/10/05 23:45:00
-// “üo—ÍƒŠƒAƒ‹ƒ^ƒCƒ€ƒ‚ƒjƒ^[A§ŒÀ•t‚«ƒƒO•Û‘¶Ed•¡ƒJƒbƒgƒRƒAƒƒWƒbƒN
+// MainWindow.Monitor.cs	2026/10/24(åœŸ) 10:42:09 è² è·è»½æ¸›ã®ãŸã‚ãƒ­ã‚°å‡ºåŠ›ã‚’æŠ‘åˆ¶
+// å…¥å‡ºåŠ›ãƒªã‚¢ãƒ«ã‚¿ã‚¤ãƒ ãƒ¢ãƒ‹ã‚¿ãƒ¼ã€åˆ¶é™ä»˜ããƒ­ã‚°ä¿å­˜ãƒ»é‡è¤‡ã‚«ãƒƒãƒˆã‚³ã‚¢ãƒ­ã‚¸ãƒƒã‚¯
 using System;
 using System.Collections.Concurrent;
 using System.IO;
@@ -9,154 +9,159 @@ using System.Text;
 
 namespace InkPenHook
 {
-    public partial class MainWindow
-    {
-        private static readonly ConcurrentQueue<string> _monitorLogQueue = new ConcurrentQueue<string>();
-        private static readonly int MaxLogLines = 200;
+	public partial class MainWindow
+	{
+		private static readonly ConcurrentQueue<string> _monitorLogQueue = new ConcurrentQueue<string>();
+		private static readonly int MaxLogLines = 200;
 
-        // ƒƒO§ŒäƒXƒe[ƒg
-        public static bool IsLoggingActive { get; private set; } = false;
-        private static string _currentLogFilePath = string.Empty;
-        private static readonly long MaxLogSizeBytes = 1024 * 1024; // Å‘å1MB
+		// ãƒ­ã‚°åˆ¶å¾¡ã‚¹ãƒ†ãƒ¼ãƒˆ
+		public static bool IsLoggingActive { get; private set; } = false;
+		private static string _currentLogFilePath = string.Empty;
+		private static readonly long MaxLogSizeBytes = 1024 * 1024; // æœ€å¤§1MB
 
-        // d•¡ƒJƒbƒg—pƒLƒƒƒbƒVƒ…
-        private static string _lastCategory = string.Empty;
-        private static string _lastMessage = string.Empty;
-        private static int _repeatCount = 0;
+		// é‡è¤‡ã‚«ãƒƒãƒˆç”¨ã‚­ãƒ£ãƒƒã‚·ãƒ¥
+		private static string _lastCategory = string.Empty;
+		private static string _lastMessage = string.Empty;
+		private static int _repeatCount = 0;
 
-        private IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam)
-        {
-            if (nCode >= 0)
-            {
-                int vkCode = Marshal.ReadInt32(lParam);
-                int scanCode = Marshal.ReadInt32(lParam, 4);
-                int flags = Marshal.ReadInt32(lParam, 8);
+		private IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam)
+		{
+			if (nCode >= 0)
+			{
+				// ğŸ’¡ ãƒã‚¦ã‚¹åŒæ§˜ã«ã€å¿…è¦ãªæ™‚ä»¥å¤–ã¯é‡ã„æ–‡å­—åˆ—ãƒ“ãƒ«ãƒ‰ã‚’ã‚¹ã‚­ãƒƒãƒ—
+				if (_isMonitorTabSelected || IsLoggingActive)
+				{
+					int vkCode = Marshal.ReadInt32(lParam);
+					int scanCode = Marshal.ReadInt32(lParam, 4);
+					int flags = Marshal.ReadInt32(lParam, 8);
 
-                bool isKeyUp = (flags & 0x80) != 0;
-                bool isInjected = (flags & 0x10) != 0;
+					bool isKeyUp = (flags & 0x80) != 0;
+					bool isInjected = (flags & 0x10) != 0;
 
-                string direction = isKeyUp ? "UP" : "DOWN";
-                string source = isInjected ? "AppOutput" : "PhysicalKey";
+					string direction = isKeyUp ? "UP" : "DOWN";
+					string source = isInjected ? "AppOutput" : "PhysicalKey";
 
-                AppendDeviceLog(source, $"VK: 0x{vkCode:X2}, SC: 0x{scanCode:X2} ({direction})");
-            }
-            return NativeMethods.CallNextHookEx(_keyboardHookHandle, nCode, wParam, lParam);
-        }
+					AppendDeviceLog(source, $"VK: 0x{vkCode:X2}, SC: 0x{scanCode:X2} ({direction})");
 
-        public static void LogPenRawInput(bool barrel, bool eraser, uint pressure = 0)
-        {
-            AppendDeviceLog("RawPen", $"Barrel: {(barrel ? "ON " : "OFF")}, Eraser: {(eraser ? "ON " : "OFF")}, Press: {pressure}");
-        }
+				}
+			}
+			return NativeMethods.CallNextHookEx(_keyboardHookHandle, nCode, wParam, lParam);
+		}
 
-        public static void StartFileLogging()
-        {
-            if (IsLoggingActive) return;
-            try
-            {
-                string downloadsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
-                if (!Directory.Exists(downloadsPath)) Directory.CreateDirectory(downloadsPath);
+		public static void LogPenRawInput(bool barrel, bool eraser, uint pressure = 0)
+		{
+			AppendDeviceLog("RawPen", $"Barrel: {(barrel ? "ON " : "OFF")}, Eraser: {(eraser ? "ON " : "OFF")}, Press: {pressure}");
+		}
 
-                string timeStamp = DateTime.Now.ToString("yyMMdd-HHmmss");
-                _currentLogFilePath = Path.Combine(downloadsPath, $"InkPenHook_mon_{timeStamp}.log");
+		public static void StartFileLogging()
+		{
+			if (IsLoggingActive) return;
+			try
+			{
+				string downloadsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+				if (!Directory.Exists(downloadsPath)) Directory.CreateDirectory(downloadsPath);
 
-                IsLoggingActive = true;
-                AppendDeviceLog("System", $"File Logging Started. Path: {_currentLogFilePath}");
-            }
-            catch (Exception ex)
-            {
-                AppendDeviceLog("System", $"Failed to start logging: {ex.Message}");
-            }
-        }
+				string timeStamp = DateTime.Now.ToString("yyMMdd-HHmmss");
+				_currentLogFilePath = Path.Combine(downloadsPath, $"InkPenHook_mon_{timeStamp}.log");
 
-        public static void StopFileLogging(string reason = "User Stopped")
-        {
-            if (!IsLoggingActive) return;
-            IsLoggingActive = false;
-            AppendDeviceLog("System", $"File Logging Stopped. Reason: {reason}");
-            _currentLogFilePath = string.Empty;
-            _lastCategory = string.Empty; // ƒLƒƒƒbƒVƒ…ƒNƒŠƒA
-            _lastMessage = string.Empty;
-        }
+				IsLoggingActive = true;
+				AppendDeviceLog("System", $"File Logging Started. Path: {_currentLogFilePath}");
+			}
+			catch (Exception ex)
+			{
+				AppendDeviceLog("System", $"Failed to start logging: {ex.Message}");
+			}
+		}
 
-        // “‡ƒƒO‹L˜^Ed•¡§Œä‹@\
-        public static void AppendDeviceLog(string category, string message)
-        {
-            // “¯ˆê“à—e‚Ì˜A‘±”­¶‚ğŒŸ’m
-            if (category == _lastCategory && message == _lastMessage)
-            {
-                _repeatCount++;
-                // ‰æ–Êƒoƒbƒtƒ@‚âƒtƒ@ƒCƒ‹‚ªˆì‚ê‚È‚¢‚æ‚¤A“à•”ƒJƒEƒ“ƒg‚Ì‚İi‚ß‚ÄƒXƒ‹[
-                return;
-            }
+		public static void StopFileLogging(string reason = "User Stopped")
+		{
+			if (!IsLoggingActive) return;
+			IsLoggingActive = false;
+			AppendDeviceLog("System", $"File Logging Stopped. Reason: {reason}");
+			_currentLogFilePath = string.Empty;
+			_lastCategory = string.Empty; // ã‚­ãƒ£ãƒƒã‚·ãƒ¥ã‚¯ãƒªã‚¢
+			_lastMessage = string.Empty;
+		}
 
-            // •Ê‚ÌƒƒO‚ª—ˆ‚½ê‡A‚»‚ê‚Ü‚Å‚Ìd•¡•ª‚ª‚ ‚ê‚Îƒtƒ‰ƒbƒVƒ…•\¦
-            FlushRepeatCount();
+		// çµ±åˆãƒ­ã‚°è¨˜éŒ²ãƒ»é‡è¤‡åˆ¶å¾¡æ©Ÿæ§‹
+		public static void AppendDeviceLog(string category, string message)
+		{
+			// åŒä¸€å†…å®¹ã®é€£ç¶šç™ºç”Ÿã‚’æ¤œçŸ¥
+			if (category == _lastCategory && message == _lastMessage)
+			{
+				_repeatCount++;
+				// ç”»é¢ãƒãƒƒãƒ•ã‚¡ã‚„ãƒ•ã‚¡ã‚¤ãƒ«ãŒæº¢ã‚Œãªã„ã‚ˆã†ã€å†…éƒ¨ã‚«ã‚¦ãƒ³ãƒˆã®ã¿é€²ã‚ã¦ã‚¹ãƒ«ãƒ¼
+				return;
+			}
 
-            // V‹KƒƒO‚Ìİ’è
-            _lastCategory = category;
-            _lastMessage = message;
-            _repeatCount = 0;
+			// åˆ¥ã®ãƒ­ã‚°ãŒæ¥ãŸå ´åˆã€ãã‚Œã¾ã§ã®é‡è¤‡åˆ†ãŒã‚ã‚Œã°ãƒ•ãƒ©ãƒƒã‚·ãƒ¥è¡¨ç¤º
+			FlushRepeatCount();
 
-            WriteLogLine(category, message);
-        }
+			// æ–°è¦ãƒ­ã‚°ã®è¨­å®š
+			_lastCategory = category;
+			_lastMessage = message;
+			_repeatCount = 0;
 
-        private static void FlushRepeatCount()
-        {
-            if (_repeatCount > 0)
-            {
-                WriteLogLine(_lastCategory, $".. snip .. (repeated {_repeatCount} times)");
-                _repeatCount = 0;
-            }
-        }
+			WriteLogLine(category, message);
+		}
 
-        private static void WriteLogLine(string category, string message)
-        {
-            string timeStamp = DateTime.Now.ToString("HH:mm:ss.fff");
-            string line = $"[{timeStamp}] [{category}] {message}";
+		private static void FlushRepeatCount()
+		{
+			if (_repeatCount > 0)
+			{
+				WriteLogLine(_lastCategory, $".. snip .. (repeated {_repeatCount} times)");
+				_repeatCount = 0;
+			}
+		}
 
-            _monitorLogQueue.Enqueue(line);
+		private static void WriteLogLine(string category, string message)
+		{
+			string timeStamp = DateTime.Now.ToString("HH:mm:ss.fff");
+			string line = $"[{timeStamp}] [{category}] {message}";
 
-            while (_monitorLogQueue.Count > MaxLogLines)
-            {
-                _monitorLogQueue.TryDequeue(out _);
-            }
+			_monitorLogQueue.Enqueue(line);
 
-            if (IsLoggingActive && !string.IsNullOrEmpty(_currentLogFilePath))
-            {
-                try
-                {
-                    var fileInfo = new FileInfo(_currentLogFilePath);
-                    if (fileInfo.Exists && fileInfo.Length >= MaxLogSizeBytes)
-                    {
-                        StopFileLogging("Auto-Stopped (Size limit 1MB reached)");
-                        return;
-                    }
-                    File.AppendAllText(_currentLogFilePath, line + Environment.NewLine, Encoding.UTF8);
-                }
-                catch { }
-            }
-        }
+			while (_monitorLogQueue.Count > MaxLogLines)
+			{
+				_monitorLogQueue.TryDequeue(out _);
+			}
 
-        public string GetMonitorText()
-        {
-            // Œ»İ’~Ï’†‚Ìd•¡•ª‚àƒŠƒAƒ‹ƒ^ƒCƒ€‚É”½‰f‚³‚¹‚é‚½‚ß‚Ìƒtƒ‰ƒbƒVƒ…
-            // iƒ^ƒCƒ}[“¯Šú‚É‚æ‚èUI‘¤‚ÅƒKƒ^‚Â‚©‚È‚¢‚æ‚¤AƒQƒbƒ^[‘¤‚ÅƒXƒiƒbƒvƒVƒ‡ƒbƒg‚É”½‰fj
-            if (_repeatCount > 0)
-            {
-                string timeStamp = DateTime.Now.ToString("HH:mm:ss.fff");
-                return string.Join(Environment.NewLine, _monitorLogQueue.ToArray())
-                    + Environment.NewLine + $"[{timeStamp}] [{_lastCategory}] .. snip .. (repeated {_repeatCount} times)";
-            }
-            return string.Join(Environment.NewLine, _monitorLogQueue.ToArray());
-        }
+			if (IsLoggingActive && !string.IsNullOrEmpty(_currentLogFilePath))
+			{
+				try
+				{
+					var fileInfo = new FileInfo(_currentLogFilePath);
+					if (fileInfo.Exists && fileInfo.Length >= MaxLogSizeBytes)
+					{
+						StopFileLogging("Auto-Stopped (Size limit 1MB reached)");
+						return;
+					}
+					File.AppendAllText(_currentLogFilePath, line + Environment.NewLine, Encoding.UTF8);
+				}
+				catch { }
+			}
+		}
 
-        public void ClearMonitorLogBuffer()
-        {
-            _monitorLogQueue.Clear();
-            _lastCategory = string.Empty;
-            _lastMessage = string.Empty;
-            _repeatCount = 0;
-            AppendDeviceLog("System", "In-memory log buffer cleared.");
-        }
-    }
+		public string GetMonitorText()
+		{
+			// ç¾åœ¨è“„ç©ä¸­ã®é‡è¤‡åˆ†ã‚‚ãƒªã‚¢ãƒ«ã‚¿ã‚¤ãƒ ã«åæ˜ ã•ã›ã‚‹ãŸã‚ã®ãƒ•ãƒ©ãƒƒã‚·ãƒ¥
+			// ï¼ˆã‚¿ã‚¤ãƒãƒ¼åŒæœŸã«ã‚ˆã‚ŠUIå´ã§ã‚¬ã‚¿ã¤ã‹ãªã„ã‚ˆã†ã€ã‚²ãƒƒã‚¿ãƒ¼å´ã§ã‚¹ãƒŠãƒƒãƒ—ã‚·ãƒ§ãƒƒãƒˆã«åæ˜ ï¼‰
+			if (_repeatCount > 0)
+			{
+				string timeStamp = DateTime.Now.ToString("HH:mm:ss.fff");
+				return string.Join(Environment.NewLine, _monitorLogQueue.ToArray())
+					+ Environment.NewLine + $"[{timeStamp}] [{_lastCategory}] .. snip .. (repeated {_repeatCount} times)";
+			}
+			return string.Join(Environment.NewLine, _monitorLogQueue.ToArray());
+		}
+
+		public void ClearMonitorLogBuffer()
+		{
+			_monitorLogQueue.Clear();
+			_lastCategory = string.Empty;
+			_lastMessage = string.Empty;
+			_repeatCount = 0;
+			AppendDeviceLog("System", "In-memory log buffer cleared.");
+		}
+	}
 }

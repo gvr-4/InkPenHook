@@ -1,6 +1,9 @@
 ﻿// InkPenHook
-// MainWindow.xaml.cs	2026/10/04 23:00:00
+// MainWindow.xaml.cs	2026/10/24(土) 10:42:55 負荷軽減のためログ出力を抑制
 // 重複起動防止(Mutex)・設定エラーログ・モニターフック連動
+
+// 2026/10/13(火) 20:45:40 CliStのbarrelボタンはデフォルト（マウス右ボタンでスポイト）のためキーコードは書かない．．
+
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -26,16 +29,16 @@ namespace InkPenHook{
 				//if (string.IsNullOrEmpty(path)) path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "InkPenHook.dll");
 				//if (File.Exists(path)) return File.GetLastWriteTime(path).ToString("yyyy/MM/dd HH:mm:ss");
 
-                // アセンブリからメタデータを取得
-                var _assembly = Assembly.GetExecutingAssembly();
-                var _infoVersion = _assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-                // 例: 1.0.0+2026-10-05 00:02:00Z な形式．めんどうだからこのまんま．
-                return _infoVersion;
+				// アセンブリからメタデータを取得
+				var _assembly = Assembly.GetExecutingAssembly();
+				var _infoVersion = _assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+				// 例: 1.0.0+2026-10-05 00:02:00Z な形式．めんどうだからこのまんま．
+				return _infoVersion;
 
 
 
-            }
-            catch { }
+			}
+			catch { }
 			return "取得失敗";
 		}
 	}
@@ -84,16 +87,51 @@ namespace InkPenHook{
 				}else{
 					StringBuilder sb = new StringBuilder();
 					sb.AppendLine("<RootConfig xmlns=\"clr-namespace:InkPenHook;assembly=InkPenHook\">");
-					sb.AppendLine("    <RootConfig.GlobalSettings><GlobalSettings LongPressMs=\"350\" /></RootConfig.GlobalSettings>");
 					sb.AppendLine("    <RootConfig.Apps>");
-					sb.AppendLine("        <AppProfile AppName=\"KRITA\" ProcessName=\"krita\" BarrelShortScanCode=\"18\" EraserShortScanCode=\"18\" EraserShortBehavior=\"Stroke\" EraserPressDurationMs=\"40\" EraserDebounceMs=\"180\" EraserReleaseDelayMs=\"75\" />");
-					sb.AppendLine("        <AppProfile AppName=\"CliSt\" ProcessName=\"CLIPStudioPaint\" BarrelShortScanCode=\"18\" EraserShortScanCode=\"18\" EraserShortBehavior=\"ToggleHold\" EraserDebounceMs=\"180\" EraserReleaseDelayMs=\"2\" />");
+					sb.AppendLine("        <AppProfile AppName=\"KRITA\" ProcessName=\"krita\"");
+					sb.AppendLine("            BarrelShortScanCode=\"0\"");
+					sb.AppendLine("            BarrelLongScanCode=\"0\"");
+
+					sb.AppendLine("            BarrelLongPressMs=\"350\"");
+
+					sb.AppendLine("            BarrelShortBehavior=\"Stroke\"");
+					sb.AppendLine("            BarrelPressDurationMs=\"40\"");
+					sb.AppendLine("            BarrelDebounceMs=\"180\"");
+					sb.AppendLine("            BarrelReleaseDelayMs=\"75\"");
+
+					sb.AppendLine("            EraserShortScanCode=\"18\"");
+					sb.AppendLine("            EraserLongScanCode=\"0\"");
+
+					sb.AppendLine("            EraserLongPressMs=\"350\"");
+
+					sb.AppendLine("            EraserShortBehavior=\"Stroke\"");
+					sb.AppendLine("            EraserPressDurationMs=\"40\"");
+					sb.AppendLine("            EraserDebounceMs=\"180\"");
+					sb.AppendLine("            EraserReleaseDelayMs=\"75\" />");
+
+					sb.AppendLine("        <AppProfile AppName=\"CliSt\" ProcessName=\"CLIPStudioPaint\"");
+					sb.AppendLine("            BarrelShortScanCode=\"0\"");
+					sb.AppendLine("            BarrelLongScanCode=\"0\"");
+
+					sb.AppendLine("            BarrelLongPressMs=\"350\"");
+
+					sb.AppendLine("            BarrelShortBehavior=\"Stroke\"");
+					sb.AppendLine("            BarrelPressDurationMs=\"40\"");
+					sb.AppendLine("            BarrelDebounceMs=\"180\"");
+					sb.AppendLine("            BarrelReleaseDelayMs=\"75\"");
+
+					sb.AppendLine("            EraserShortScanCode=\"18\"");
+					sb.AppendLine("            EraserShortBehavior=\"ToggleHold\"");
+					sb.AppendLine("            EraserDebounceMs=\"180\"");
+					sb.AppendLine("            EraserReleaseDelayMs=\"2\" />");
 					sb.AppendLine("    </RootConfig.Apps>");
 					sb.AppendLine("</RootConfig>");
 					File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
 					_configRoot = (RootConfig)XamlReader.Parse(sb.ToString());
 					ConfigErrorLog = "正常 (デフォルトファイルを自動生成しました)";
 				}
+
+				ConfigErrorLog += DumpProfileTree( _configRoot );
 				return true;
 			}
 			catch (XamlParseException xex){
@@ -109,8 +147,12 @@ namespace InkPenHook{
 		private IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam){
 			if (nCode >= 0)	{
 				int msg = (int)wParam;
-				// モニターへログをリレー
-				AppendDeviceLog("Mouse", $"Msg: 0x{msg:X4}");
+
+ 				// ログはモニタを観てる時だけ
+ 				if (_isMonitorTabSelected || IsLoggingActive) {
+					// モニターへログをリレー
+					AppendDeviceLog("Mouse", $"Msg: 0x{msg:X4}");
+				}
 
 				if (_isPhysicalBarrelDown || _isPhysicalEraserDown){
 					if (msg == NativeMethods.WM_RBUTTONDOWN || msg == NativeMethods.WM_RBUTTONUP ||

@@ -1,7 +1,9 @@
 //
 // InkPenHook
 // MainWindow.Actions.cs	2026/10/04 01:20:00
-//
+//	2026/10/11(日) 01:57:29  Debug.Write() をShowOSD()に．各加工出力をOSDにも追加
+//	2026/10/18(日) 00:23:55 BarrelのアクションをErase処理を移植して同等機能に．
+
 using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -17,17 +19,18 @@ namespace InkPenHook{
 		DateTime _lastProfileUpdateTime = new DateTime();
 		DateTime _barrelPressStartTime = new DateTime();
 		DateTime _eraserPressStartTime = new DateTime();
-		DateTime _lastEraserShortTriggerTime = new DateTime();
-		string _cachedProcessName = string.Empty;
+        DateTime _lastEraserShortTriggerTime = new DateTime();
+        DateTime _lastBarrelShortTriggerTime = new DateTime();
+        string _cachedProcessName = string.Empty;
 		bool _isVirtualToggleHoldActive = false;
-		bool _isLongPressed = false;
-		bool _isKeyDownSent = false;
-        private CancellationTokenSource _barrelLoopToken;
+		private CancellationTokenSource _barrelLoopToken;
 		private CancellationTokenSource _eraserLoopToken;
-		bool _isEraserKeyDownSent = false;
-		bool _isEraserLongPressed = false;
-		
-		private void ParsePenRawInput(IntPtr hRawInput)	{
+        bool _isEraserKeyDownSent = false;
+        bool _isBarrelKeyDownSent = false;
+        bool _isEraserLongPressed = false;
+        bool _isBarrelLongPressed = false;
+
+        private void ParsePenRawInput(IntPtr hRawInput)	{
 			uint dwSize = 0;
 			NativeMethods.GetRawInputData(hRawInput, NativeMethods.RID_INPUT, IntPtr.Zero, ref dwSize, (uint)Marshal.SizeOf(typeof(NativeMethods.RAWINPUTHEADER)));
 			if (dwSize == 0) return;
@@ -52,7 +55,9 @@ namespace InkPenHook{
 					}
 				}
 			}
-			catch (Exception ex) { Debug.WriteLine($"RawInput Error: {ex.Message}"); }
+			catch (Exception ex) {
+				ShowOSD( $"RawInput Error: {ex.Message}" );
+			}
 			finally { Marshal.FreeHGlobal(pData); }
 		}
 
@@ -79,8 +84,7 @@ namespace InkPenHook{
 								}
 								_currentProfile = app;
 							}
-							Debug.WriteLine($"[Actions] {_currentProfile.AppName} Up Rising!");
-							ShowOSD($"Profile: {_currentProfile.AppName}");
+							ShowOSD( $"[Actions] {_currentProfile.AppName} Up Rising!" );
 							return;
 						}
 					}
@@ -90,84 +94,196 @@ namespace InkPenHook{
 			_currentProfile = new AppProfile { AppName = "Default_None", ProcessName = "" };
 		}
 
-		private void ProcessBarrelSmartActions(bool currentBarrel, bool currentTip){
-			int longPressMs = _configRoot.GlobalSettings?.LongPressMs ?? 350;
-			if (currentBarrel && !_lastBarrelState) {
+		private void ProcessBarrelSmartActions(bool currentBarrel, bool currentTip)	{
+			ushort BarrellongPressMs = _currentProfile.BarrelLongPressMs;
+			if (	currentBarrel
+				&&	! _lastBarrelState) {
 				_barrelPressStartTime = DateTime.Now;
-				_isLongPressed = _isKeyDownSent = false;
+				_isBarrelLongPressed = _isBarrelKeyDownSent = false;
 				_lastBarrelState = true;
 			}
-			if (currentBarrel && _lastBarrelState && !_isLongPressed && (DateTime.Now - _barrelPressStartTime).TotalMilliseconds >= longPressMs){
-				_isLongPressed = true;
-				if (_currentProfile.BarrelLongScanCode != 0 && !_isKeyDownSent)	{
-					_isKeyDownSent = true;
+			if (	currentBarrel
+				&&	_lastBarrelState
+				&&	! _isBarrelLongPressed
+				&&	(DateTime.Now - _barrelPressStartTime).TotalMilliseconds >= BarrellongPressMs ){
+
+				_isBarrelLongPressed = true;
+
+				if (	_currentProfile.BarrelLongScanCode != 0
+					&&	! _isBarrelKeyDownSent ){
+
+					_isBarrelKeyDownSent = true;
 					_barrelLoopToken = new System.Threading.CancellationTokenSource();
+
 					var token = _barrelLoopToken.Token;
 					ushort code = _currentProfile.BarrelLongScanCode;
-					Task.Run(async () => {
-						try {
-							while (!token.IsCancellationRequested) {
-								SendHardwareKeyDownOnly(code);
-								await Task.Delay(25, token);
+					Task.Run(
+						async () => {
+							try {
+								while (!token.IsCancellationRequested) {
+									SendHardwareKeyDownOnly(code);
+									await Task.Delay(25, token);
+								}
 							}
+							catch { }
 						}
-						catch {	}
-					}, token);
-				}
-			}
-			if (!currentBarrel && _lastBarrelState){
-				_barrelLoopToken?.Cancel(); _barrelLoopToken?.Dispose(); _barrelLoopToken = null;
-				if (!_isLongPressed && _currentProfile.BarrelShortScanCode != 0) SendHardwareKeyStrokeQuick(_currentProfile.BarrelShortScanCode, 30);
-				else if (_isKeyDownSent && _currentProfile.BarrelLongScanCode != 0) SendHardwareKeyUpOnly(_currentProfile.BarrelLongScanCode);
-				_isKeyDownSent = _lastBarrelState = false;
-			}
-		}
+						,token
+					);
+					ShowOSD( $"Barrel V-LongPressed:{code}" );
 
-		private void ProcessEraserSmartActions(bool currentEraser, bool currentTip)	{
-			int longPressMs = _configRoot.GlobalSettings?.LongPressMs ?? 350;
-			if (currentEraser && !_lastEraserState) {
-				_eraserPressStartTime = DateTime.Now; _isEraserLongPressed = _isEraserKeyDownSent = false; _lastEraserState = true;
-			}
-			if (currentEraser && _lastEraserState && !_isEraserLongPressed && (DateTime.Now - _eraserPressStartTime).TotalMilliseconds >= longPressMs){
-				_isEraserLongPressed = true;
-				if (_currentProfile.EraserLongScanCode != 0 && !_isEraserKeyDownSent){
-					_isEraserKeyDownSent = true; _eraserLoopToken = new System.Threading.CancellationTokenSource();
-					var token = _eraserLoopToken.Token; ushort code = _currentProfile.EraserLongScanCode;
-					Task.Run(async () => { try { while (!token.IsCancellationRequested) { SendHardwareKeyDownOnly(code); await Task.Delay(25, token); } } catch { } }, token);
 				}
 			}
-			if (!currentEraser && _lastEraserState){
-				_eraserLoopToken?.Cancel(); _eraserLoopToken?.Dispose(); _eraserLoopToken = null;
-				if (!_isEraserLongPressed && _currentProfile.EraserShortScanCode != 0){
-					if ((DateTime.Now - _lastEraserShortTriggerTime).TotalMilliseconds > _currentProfile.EraserDebounceMs){
-						_lastEraserShortTriggerTime = DateTime.Now;
-						ushort code = _currentProfile.EraserShortScanCode;
-						int delay = _currentProfile.EraserReleaseDelayMs;
-						int duration = _currentProfile.EraserPressDurationMs;
-						if (_currentProfile.EraserShortBehavior == ButtonBehavior.ToggleHold){
-							// クリップスタジオ用：交互にホールドと解除を切り替える
+			if (	!currentBarrel
+				&&	_lastBarrelState){
+
+				_barrelLoopToken?.Cancel();
+				_barrelLoopToken?.Dispose();
+				_barrelLoopToken = null;
+
+				ushort code = _currentProfile.BarrelShortScanCode;
+
+				if (	! _isBarrelLongPressed
+					&&	code != 0){
+					if ( ( DateTime.Now - _lastBarrelShortTriggerTime).TotalMilliseconds > _currentProfile.BarrelDebounceMs ){
+						_lastBarrelShortTriggerTime = DateTime.Now;
+						int delay = _currentProfile.BarrelReleaseDelayMs;
+						int duration = _currentProfile.BarrelPressDurationMs;
+						if ( _currentProfile.BarrelShortBehavior == ButtonBehavior.ToggleHold){
 							if (!_isVirtualToggleHoldActive){
-								Task.Run(async () => { if (delay > 0) await Task.Delay(delay); SendHardwareKeyDownOnly(code); });
+								Task.Run(
+									async () => {
+										if (delay > 0) await Task.Delay(delay);
+										SendHardwareKeyDownOnly(code);
+									}
+								);
 								_isVirtualToggleHoldActive = true;
-								Debug.WriteLine("🧹 CliSt仮想ホールド: [KeyDown保持]");
+								ShowOSD( $"Barrel V-Toggle:keep key press hold:{code}" );
+
 							}else{
-								Task.Run(async () => { if (delay > 0) await Task.Delay(delay); SendHardwareKeyUpOnly(code); });
+								Task.Run(
+									async () => {
+										if (delay > 0) await Task.Delay(delay); SendHardwareKeyUpOnly(code);
+									}
+								);
 								_isVirtualToggleHoldActive = false;
-								Debug.WriteLine("🧹 CliSt仮想ホールド: [KeyUp解放]");
+								ShowOSD( $"Barrel V-Toggle:release key:{code}" );
 							}
 						}else{
-							// Krita用：正確なホールド時間を持ったワンショットストローク
-							Task.Run( async () => {
+							Task.Run(
+								async () => {
 									if (delay > 0) await Task.Delay(delay);
 									SendHardwareKeyDownOnly(code);
 									await Task.Delay(duration);
 									SendHardwareKeyUpOnly(code);
 								}
 							);
+							ShowOSD( $"Barrel V-Shortpressed:{code}" );
+
 						}
 					}
-				}else if (_isEraserKeyDownSent && _currentProfile.EraserLongScanCode != 0) SendHardwareKeyUpOnly(_currentProfile.EraserLongScanCode);
-				_isEraserKeyDownSent = _lastEraserState = false; _isPhysicalEraserDown = false;
+				}else if (	_isBarrelKeyDownSent
+						&& _currentProfile.BarrelLongScanCode != 0){
+					SendHardwareKeyUpOnly(_currentProfile.BarrelLongScanCode);
+				}
+				_isBarrelKeyDownSent = _lastBarrelState = false;
+				_isPhysicalBarrelDown = false;
+			}
+		}
+
+
+		private void ProcessEraserSmartActions(bool currentEraser, bool currentTip)	{
+			ushort EraserlongPressMs = _currentProfile.EraserLongPressMs;
+			if (	currentEraser
+				&&	! _lastEraserState) {
+				_eraserPressStartTime = DateTime.Now;
+				_isEraserLongPressed = _isEraserKeyDownSent = false;
+				_lastEraserState = true;
+			}
+			if (	currentEraser
+				&&	_lastEraserState
+				&&	! _isEraserLongPressed
+				&&	(DateTime.Now - _eraserPressStartTime).TotalMilliseconds >= EraserlongPressMs ){
+
+				_isEraserLongPressed = true;
+
+				if (	_currentProfile.EraserLongScanCode != 0
+					&&	! _isEraserKeyDownSent ){
+
+					_isEraserKeyDownSent = true;
+					_eraserLoopToken = new System.Threading.CancellationTokenSource();
+
+					var token = _eraserLoopToken.Token;
+					ushort code = _currentProfile.EraserLongScanCode;
+					Task.Run(
+						async () => {
+							try {
+								while (!token.IsCancellationRequested) {
+									SendHardwareKeyDownOnly(code);
+									await Task.Delay(25, token);
+								}
+							}
+							catch { }
+						}
+						,token
+					);
+					ShowOSD( $"Erase V-LongPressed:{code}" );
+
+				}
+			}
+			if (	!currentEraser
+				&&	_lastEraserState){
+				_eraserLoopToken?.Cancel();
+				_eraserLoopToken?.Dispose();
+				_eraserLoopToken = null;
+
+				ushort code = _currentProfile.EraserShortScanCode;
+				if (	! _isEraserLongPressed
+					&&	code != 0){
+					if ( ( DateTime.Now - _lastEraserShortTriggerTime).TotalMilliseconds > _currentProfile.EraserDebounceMs ){
+						_lastEraserShortTriggerTime = DateTime.Now;
+						int delay = _currentProfile.EraserReleaseDelayMs;
+						int duration = _currentProfile.EraserPressDurationMs;
+						if ( _currentProfile.EraserShortBehavior == ButtonBehavior.ToggleHold){
+							// クリップスタジオ用：交互にホールドと解除を切り替える
+							if (!_isVirtualToggleHoldActive){
+								Task.Run(
+									async () => {
+										if (delay > 0) await Task.Delay(delay);
+										SendHardwareKeyDownOnly(code);
+									}
+								);
+								_isVirtualToggleHoldActive = true;
+								ShowOSD( $"Eraser V-Toggle:keep key press hold:{code}" );
+
+							}else{
+								Task.Run(
+									async () => {
+										if (delay > 0) await Task.Delay(delay); SendHardwareKeyUpOnly(code);
+									}
+								);
+								_isVirtualToggleHoldActive = false;
+								ShowOSD( $"Eraser V-Toggle:release key:{code}" );
+							}
+						}else{
+							// Krita用：正確なホールド時間を持ったワンショットストローク
+							Task.Run(
+								async () => {
+									if (delay > 0) await Task.Delay(delay);
+									SendHardwareKeyDownOnly(code);
+									await Task.Delay(duration);
+									SendHardwareKeyUpOnly(code);
+								}
+							);
+							ShowOSD( $"Eraser V-Shortpressed:{code}" );
+
+						}
+					}
+				}else if (	_isEraserKeyDownSent
+						&& _currentProfile.EraserLongScanCode != 0){
+					SendHardwareKeyUpOnly(_currentProfile.EraserLongScanCode);
+				}
+				_isEraserKeyDownSent = _lastEraserState = false;
+				_isPhysicalEraserDown = false;
 			}
 		}
 

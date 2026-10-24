@@ -1,5 +1,10 @@
 /* ========================================================================= */
-/* [PROJECT] InkPenHook - Tray GUI & Global HotKey Control Panel 2026/09/25(金) 00:25:00 */
+/* [PROJECT] InkPenHook - Tray GUI & Global HotKey Control Panel 2026/09/25(金) 00:25:00
+	2026/10/11(日) 01:37:41 構成表示項目追加，OSD表示時はデバッグ出力を追加
+	2026/10/13(火) 17:28:01 構成表示追加．
+	2026/10/24(土) 10:43:39 負荷軽減のためログ出力を抑制
+ */
+
 /* ========================================================================= */
 
 using System;
@@ -27,6 +32,9 @@ namespace InkPenHook{
 		private const int HOTKEY_ERAS_ID = 8888;
 		[DllImport("user32.dll")] private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
 		[DllImport("user32.dll")] private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
+		private volatile bool _isMonitorTabSelected = false; // 💡タブの選択状態を管理
+
 		private void SetupTaskTrayIcon(){
 			if (_notifyIcon != null) return;
 			_notifyIcon = new NotifyIcon { Text = $"InkPenHook Core v{AppInfo.Version}" };
@@ -80,6 +88,8 @@ namespace InkPenHook{
 				_osdWindow.Top = SystemParameters.PrimaryScreenHeight - _osdWindow.ActualHeight - 120;
 				_osdTimer.Start();
 			}));
+
+			AppendDeviceLog( "System", message );
 		}
 
 		private void OpenControlPanel(int initialTabIndex = 0){
@@ -128,8 +138,19 @@ namespace InkPenHook{
 			// 構成情報の更新用ローカル関数
 			Action updateConfigText = () => {
 				statusText.Text = $"【InkPenHook 現在の有効構成】\n\n"
-				  + $"🎯 適用アプリ: {_currentProfile.AppName} ({_currentProfile.ProcessName})\n"
-				  + $"⚙ Eraseトグルモード: {_currentProfile.EraserShortBehavior}\n"
+				  + $"🎯 Target: {_currentProfile.AppName} ({_currentProfile.ProcessName})\n"
+				  + $"⚙ Barrel Scan Code Short={_currentProfile.BarrelShortScanCode}, Long={_currentProfile.BarrelLongScanCode}\n"
+				  + $"⚙  Long Press Threshold:  {_currentProfile.BarrelLongPressMs} ms\n"
+				  + $"⚙  Behavior:       {_currentProfile.BarrelShortBehavior}\n"
+				  + $"⚙  Make Dulration: {_currentProfile.BarrelPressDurationMs} ms\n"
+				  + $"⚙  Break settling: {_currentProfile.BarrelDebounceMs} ms\n"
+				  + $"⚙  Singleshot:     {_currentProfile.BarrelReleaseDelayMs} ms\n"
+				  + $"⚙ Eraser Scan Code Short={_currentProfile.EraserShortScanCode}, Long={_currentProfile.EraserLongScanCode}\n"
+				  + $"⚙  Long Press Threshold:  {_currentProfile.EraserLongPressMs} ms\n"
+				  + $"⚙  Behavior:       {_currentProfile.EraserShortBehavior}\n"
+				  + $"⚙  Make Dulration: {_currentProfile.EraserPressDurationMs} ms\n"
+				  + $"⚙  Break settling: {_currentProfile.EraserDebounceMs} ms\n"
+				  + $"⚙  Singleshot:     {_currentProfile.EraserReleaseDelayMs} ms\n"
 				  + $"📦 コアビルド日時: {AppInfo.GetBuildDateTime()}\n\n"
 				  + $"📘 ※詳細な設定書式やサンプルは、Exeと同梱されている\n"
 				  + $"    「InkPenHook_ReadMe.txt」を参照してください。";
@@ -200,6 +221,11 @@ namespace InkPenHook{
 			monitorGrid.Children.Add(monitorCtrlStack);
 			tabMonitor.Content = monitorGrid;
 			tabControl.Items.Add(tabMonitor);
+
+			tabControl.SelectionChanged += (s, e) => {
+				// 💡リアルタイムモニター(Index: 1)が選択されている時だけフラグをONにする
+				_isMonitorTabSelected = (tabControl.SelectedIndex == 1);
+			};
 
 			var refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
 			refreshTimer.Tick += (s, e) => {
@@ -292,6 +318,38 @@ namespace InkPenHook{
 				ShowOSD("Config Load Error!");
 				OpenControlPanel(2);
 			}
+		}
+
+		public static string DumpProfileTree(RootConfig config)
+		{
+			if (config == null) return "(Configuration Object is null)";
+			String sb = "";
+			sb += "[RootConfig Node]\n";
+			sb += " └─ [Apps List]\n";
+			if (config.Apps == null || config.Apps.Count == 0)
+			{
+				sb += "       └─ (No App Profiles Registered)\n";
+			}
+			else
+			{
+				foreach (var app in config.Apps)
+				{
+					sb += $"  ├─ [AppProfile: {app.AppName}] (Process: {app.ProcessName}.exe)\n";
+					sb += $"  │   ├─ Barrel ScanCode Short=0x{app.BarrelShortScanCode:X2}, Long=0x{app.BarrelLongScanCode:X2}\n";
+					sb += $"  │   │   ├─ Short/Long Threshold: {app.BarrelLongPressMs}ms\n";
+					sb += $"  │   │   ├─ Behavior:{app.BarrelShortBehavior}\n";
+					sb += $"  │   │   ├─ Make Dulration: {app.BarrelPressDurationMs}ms\n";
+					sb += $"  │   │   ├─ Break Settling: {app.BarrelDebounceMs}ms\n";
+					sb += $"  │   │   └─ SingleShot:     {app.BarrelReleaseDelayMs}ms\n";
+					sb += $"  │   └─ Eraser ScanCode Short=0x{app.EraserShortScanCode:X2}, Long=0x{app.EraserLongScanCode:X2}\n";
+					sb += $"  │        ├─ Short/Long Threshold: {app.EraserLongPressMs}ms\n";
+					sb += $"  │        ├─ Behavior:{app.EraserShortBehavior}\n";
+					sb += $"  │        ├─ Make Dulration: {app.EraserPressDurationMs}ms\n";
+					sb += $"  │        ├─ Break Settling: {app.EraserDebounceMs}ms\n";
+					sb += $"  │        └─ SingleShot:     {app.EraserReleaseDelayMs}ms\n";
+				}
+			}
+			return sb.ToString();
 		}
 
 		private void TriggerShutdown() {
